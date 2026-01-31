@@ -64,6 +64,8 @@ Response example:
 - Open `http://localhost:5000` to view the table.
 - Click any column header to sort.
 - Use **Rows per page** to adjust pagination.
+- Set **Refresh interval (seconds)** to automatically reload data (0 disables auto-refresh).
+- Click **Refresh now** to pull the latest data immediately.
 - Add `?mock=1` to the URL to load mock data from `static/mock-data.json`.
 
 ## Testing

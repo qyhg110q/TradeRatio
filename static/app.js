@@ -1,6 +1,8 @@
 const tableBody = document.getElementById("tableBody");
 const statusEl = document.getElementById("status");
 const perPageSelect = document.getElementById("perPage");
+const refreshIntervalInput = document.getElementById("refreshInterval");
+const refreshBtn = document.getElementById("refreshBtn");
 const prevBtn = document.getElementById("prevBtn");
 const nextBtn = document.getElementById("nextBtn");
 const pageInfo = document.getElementById("pageInfo");
@@ -10,6 +12,7 @@ let totalPages = 1;
 let sortKey = "symbol";
 let sortOrder = "asc";
 let useMockData = new URLSearchParams(window.location.search).get("mock") === "1";
+let refreshTimer = null;
 
 function formatRatio(value) {
   if (value === null || value === undefined) {
@@ -36,7 +39,7 @@ function renderTable(rows) {
   });
 }
 
-async function fetchData() {
+async function fetchData({ forceRefresh = false } = {}) {
   const perPage = Number(perPageSelect.value);
   const endpoint = useMockData ? "/static/mock-data.json" : "/api/profit-ratios";
   const url = new URL(endpoint, window.location.origin);
@@ -46,6 +49,9 @@ async function fetchData() {
     url.searchParams.set("per_page", perPage);
     url.searchParams.set("sort", sortKey);
     url.searchParams.set("order", sortOrder);
+    if (forceRefresh) {
+      url.searchParams.set("refresh", "1");
+    }
   }
 
   setStatus("Loading data…");
@@ -112,5 +118,25 @@ perPageSelect.addEventListener("change", () => {
   fetchData();
 });
 
+refreshBtn.addEventListener("click", () => {
+  fetchData({ forceRefresh: true });
+});
+
+function setRefreshTimer() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  const seconds = Number(refreshIntervalInput.value);
+  if (!Number.isNaN(seconds) && seconds > 0) {
+    refreshTimer = setInterval(() => {
+      fetchData({ forceRefresh: true });
+    }, seconds * 1000);
+  }
+}
+
+refreshIntervalInput.addEventListener("change", setRefreshTimer);
+
 initSorting();
 fetchData();
+setRefreshTimer();

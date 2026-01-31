@@ -47,10 +47,29 @@ header p {
   margin-right: 8px;
 }
 
-.controls select {
+.controls select,
+.controls input {
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid #d0d5dd;
+}
+
+.controls input {
+  width: 120px;
+}
+
+.controls button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.controls button:hover {
+  background: #1d4ed8;
 }
 
 .status {

@@ -1,0 +1,19 @@
+{
+  "data": [
+    {
+      "symbol": "MONUSDT",
+      "longProfitRatio": 0.2419,
+      "shortProfitRatio": 0.8407
+    },
+    {
+      "symbol": "BTCUSDT",
+      "longProfitRatio": 0.5123,
+      "shortProfitRatio": 0.4475
+    },
+    {
+      "symbol": "ETHUSDT",
+      "longProfitRatio": 0.4789,
+      "shortProfitRatio": 0.3921
+    }
+  ]
+}

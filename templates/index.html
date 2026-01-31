@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Binance Smart Money Profit Ratios</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <h1>Binance Smart Money Profit Ratios</h1>
+        <p>
+          Review long and short profit ratios for Binance futures trading pairs. Sort by any
+          column and page through results.
+        </p>
+      </header>
+
+      <section class="controls">
+        <div>
+          <label for="perPage">Rows per page</label>
+          <select id="perPage">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <div class="status" id="status">Loading data…</div>
+      </section>
+
+      <section class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="symbol">Symbol</th>
+              <th data-sort="long">Long Profit Ratio</th>
+              <th data-sort="short">Short Profit Ratio</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </section>
+
+      <section class="pagination">
+        <button id="prevBtn" type="button">Previous</button>
+        <span id="pageInfo">Page 1 of 1</span>
+        <button id="nextBtn" type="button">Next</button>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

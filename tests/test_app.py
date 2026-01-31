@@ -39,7 +39,17 @@ def test_sort_profit_ratios_by_long_desc():
         ProfitRatio("CCC", long_profit_ratio=None, short_profit_ratio=0.4),
     ]
     sorted_ratios = sort_profit_ratios(ratios, "long", "desc")
-    assert [ratio.symbol for ratio in sorted_ratios] == ["CCC", "BBB", "AAA"]
+    assert [ratio.symbol for ratio in sorted_ratios] == ["BBB", "AAA", "CCC"]
+
+
+def test_sort_profit_ratios_by_short_asc():
+    ratios = [
+        ProfitRatio("AAA", long_profit_ratio=0.1, short_profit_ratio=0.2),
+        ProfitRatio("BBB", long_profit_ratio=0.9, short_profit_ratio=None),
+        ProfitRatio("CCC", long_profit_ratio=0.5, short_profit_ratio=0.1),
+    ]
+    sorted_ratios = sort_profit_ratios(ratios, "short", "asc")
+    assert [ratio.symbol for ratio in sorted_ratios] == ["CCC", "AAA", "BBB"]
 
 
 def test_paginate_returns_expected_slice():

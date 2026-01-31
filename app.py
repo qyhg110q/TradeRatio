@@ -114,14 +114,21 @@ def sort_profit_ratios(
     sort_key: str,
     order: str,
 ) -> list[ProfitRatio]:
-    key_map = {
-        "symbol": lambda item: item.symbol,
-        "long": lambda item: (item.long_profit_ratio is None, item.long_profit_ratio or 0),
-        "short": lambda item: (item.short_profit_ratio is None, item.short_profit_ratio or 0),
-    }
-    key_fn = key_map.get(sort_key, key_map["symbol"])
-    reverse = order == "desc"
-    return sorted(ratios, key=key_fn, reverse=reverse)
+    if sort_key == "symbol":
+        return sorted(ratios, key=lambda item: item.symbol, reverse=order == "desc")
+
+    def ratio_key(value: float | None) -> tuple[bool, float]:
+        is_none = value is None
+        if is_none:
+            return True, 0.0
+        numeric = float(value)
+        return False, -numeric if order == "desc" else numeric
+
+    if sort_key == "long":
+        return sorted(ratios, key=lambda item: ratio_key(item.long_profit_ratio))
+    if sort_key == "short":
+        return sorted(ratios, key=lambda item: ratio_key(item.short_profit_ratio))
+    return sorted(ratios, key=lambda item: item.symbol)
 
 
 def paginate(items: list[ProfitRatio], page: int, per_page: int) -> tuple[list[ProfitRatio], int]:

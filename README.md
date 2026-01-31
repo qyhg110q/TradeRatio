@@ -37,6 +37,7 @@ Query parameters:
 - `per_page` (default: 50, max: 200)
 - `sort` (`symbol`, `long`, or `short`)
 - `order` (`asc` or `desc`)
+- `refresh` (`1` to bypass the 60-second in-memory cache)
 
 Response example:
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 import os
+import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Iterable, TYPE_CHECKING
 
@@ -17,6 +19,11 @@ BINANCE_SMART_MONEY_URL = (
 DEFAULT_PER_PAGE = 50
 MAX_PER_PAGE = 200
 REQUEST_TIMEOUT = 10
+FETCH_WORKERS = 12
+CACHE_TTL_SECONDS = 60
+
+_cache_lock = threading.Lock()
+_cache_state: dict[str, Any] = {"timestamp": 0.0, "data": []}
 
 
 @dataclass(frozen=True)
@@ -66,10 +73,9 @@ def fetch_active_symbols(session: "requests.Session") -> list[str]:
 def fetch_profit_ratios(session: "requests.Session", symbols: Iterable[str]) -> list[ProfitRatio]:
     import requests
 
-    results: list[ProfitRatio] = []
-    for symbol in symbols:
+    def fetch_symbol(symbol: str) -> ProfitRatio:
         try:
-            response = session.get(
+            response = requests.get(
                 BINANCE_SMART_MONEY_URL,
                 params={"symbol": symbol},
                 timeout=REQUEST_TIMEOUT,
@@ -77,10 +83,30 @@ def fetch_profit_ratios(session: "requests.Session", symbols: Iterable[str]) -> 
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError):
-            results.append(ProfitRatio(symbol=symbol, long_profit_ratio=None, short_profit_ratio=None))
-            continue
-        results.append(parse_profit_ratio(symbol, payload))
-    return results
+            return ProfitRatio(symbol=symbol, long_profit_ratio=None, short_profit_ratio=None)
+        return parse_profit_ratio(symbol, payload)
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as executor:
+        return list(executor.map(fetch_symbol, symbols))
+
+
+def get_cached_ratios() -> list[ProfitRatio]:
+    with _cache_lock:
+        return list(_cache_state["data"])
+
+
+def set_cached_ratios(ratios: list[ProfitRatio]) -> None:
+    with _cache_lock:
+        _cache_state["data"] = list(ratios)
+        _cache_state["timestamp"] = time.time()
+
+
+def cache_is_fresh() -> bool:
+    with _cache_lock:
+        timestamp = _cache_state["timestamp"]
+    return (time.time() - timestamp) < CACHE_TTL_SECONDS
 
 
 def sort_profit_ratios(
@@ -146,17 +172,22 @@ def create_app() -> "Flask":
         order = request.args.get("order", "asc").lower()
         if order not in {"asc", "desc"}:
             order = "asc"
+        refresh = request.args.get("refresh") == "1"
 
-        with requests.Session() as session:
-            try:
-                symbols = fetch_active_symbols(session)
-            except (requests.RequestException, ValueError) as exc:
-                return (
-                    jsonify({"error": "Failed to fetch exchange info.", "details": str(exc)}),
-                    502,
-                )
+        if not refresh and cache_is_fresh():
+            ratios = get_cached_ratios()
+        else:
+            with requests.Session() as session:
+                try:
+                    symbols = fetch_active_symbols(session)
+                except (requests.RequestException, ValueError) as exc:
+                    return (
+                        jsonify({"error": "Failed to fetch exchange info.", "details": str(exc)}),
+                        502,
+                    )
 
-            ratios = fetch_profit_ratios(session, symbols)
+                ratios = fetch_profit_ratios(session, symbols)
+            set_cached_ratios(ratios)
 
         ratios = sort_profit_ratios(ratios, sort_key, order)
         page_items, total = paginate(ratios, page, per_page)

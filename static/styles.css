@@ -42,6 +42,13 @@ header p {
   margin-bottom: 16px;
 }
 
+.controls-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
 .controls label {
   font-weight: 600;
   margin-right: 8px;

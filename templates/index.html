@@ -19,7 +19,7 @@
       <section class="controls">
         <div class="controls-group">
           <div>
-            <label for="perPage">Rows per page</label>
+            <label for="perPage">每页行数</label>
             <select id="perPage">
               <option value="25">25</option>
               <option value="50" selected>50</option>
@@ -28,10 +28,11 @@
             </select>
           </div>
           <div>
-            <label for="refreshInterval">Refresh interval (seconds)</label>
+            <label for="refreshInterval">自动刷新时间（秒）</label>
             <input id="refreshInterval" type="number" min="0" value="0" />
           </div>
-          <button id="refreshBtn" class="primary" type="button">Refresh now</button>
+          <button id="refreshBtn" class="primary" type="button">立即刷新</button>
+          <div class="auto-refresh" id="autoRefreshStatus">自动刷新：未启用</div>
         </div>
         <div class="status" id="status">Loading data…</div>
       </section>

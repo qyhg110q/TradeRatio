@@ -3,6 +3,7 @@ const statusEl = document.getElementById("status");
 const perPageSelect = document.getElementById("perPage");
 const refreshIntervalInput = document.getElementById("refreshInterval");
 const refreshBtn = document.getElementById("refreshBtn");
+const autoRefreshStatus = document.getElementById("autoRefreshStatus");
 const prevBtn = document.getElementById("prevBtn");
 const nextBtn = document.getElementById("nextBtn");
 const pageInfo = document.getElementById("pageInfo");
@@ -132,10 +133,13 @@ function setRefreshTimer() {
     refreshTimer = setInterval(() => {
       fetchData({ forceRefresh: true });
     }, seconds * 1000);
+    autoRefreshStatus.textContent = `自动刷新：每 ${seconds} 秒`;
+  } else {
+    autoRefreshStatus.textContent = "自动刷新：未启用";
   }
 }
 
-refreshIntervalInput.addEventListener("change", setRefreshTimer);
+refreshIntervalInput.addEventListener("input", setRefreshTimer);
 
 initSorting();
 fetchData();

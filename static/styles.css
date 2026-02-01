@@ -79,6 +79,11 @@ header p {
   background: #1d4ed8;
 }
 
+.auto-refresh {
+  font-size: 14px;
+  color: #4d5761;
+}
+
 .status {
   color: #4d5761;
 }

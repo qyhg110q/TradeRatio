@@ -2,6 +2,7 @@ const tableBody = document.getElementById("tableBody");
 const statusEl = document.getElementById("status");
 const perPageSelect = document.getElementById("perPage");
 const refreshIntervalInput = document.getElementById("refreshInterval");
+const warningThresholdInput = document.getElementById("warningThreshold");
 const refreshBtn = document.getElementById("refreshBtn");
 const autoRefreshStatus = document.getElementById("autoRefreshStatus");
 const prevBtn = document.getElementById("prevBtn");
@@ -23,6 +24,27 @@ function formatRatio(value) {
   return `${(value * 100).toFixed(2)}%`;
 }
 
+function getWarningThreshold() {
+  const threshold = Number(warningThresholdInput.value);
+  if (Number.isNaN(threshold) || threshold < 0) {
+    return 1.5;
+  }
+  return threshold;
+}
+
+function applyWarningClass(cell, value) {
+  if (!cell) {
+    return;
+  }
+  if (value === null || value === undefined) {
+    cell.classList.remove("ratio-warning");
+    return;
+  }
+  const threshold = getWarningThreshold();
+  const valuePercent = value * 100;
+  cell.classList.toggle("ratio-warning", valuePercent < threshold);
+}
+
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
   statusEl.classList.toggle("error", isError);
@@ -33,12 +55,17 @@ function renderTable(rows) {
   rows.forEach((row) => {
     const tr = document.createElement("tr");
     tr.dataset.symbol = row.symbol;
+    tr.dataset.long = row.longProfitRatio ?? "";
+    tr.dataset.short = row.shortProfitRatio ?? "";
     tr.innerHTML = `
       <td>${row.symbol}</td>
       <td>${formatRatio(row.longProfitRatio)}</td>
       <td>${formatRatio(row.shortProfitRatio)}</td>
       <td><button class="row-refresh" type="button" data-symbol="${row.symbol}">刷新</button></td>
     `;
+    const cells = tr.querySelectorAll("td");
+    applyWarningClass(cells[1], row.longProfitRatio);
+    applyWarningClass(cells[2], row.shortProfitRatio);
     tableBody.appendChild(tr);
   });
 }
@@ -48,8 +75,25 @@ function updateRow(tr, payload) {
   if (cells.length < 3) {
     return;
   }
+  tr.dataset.long = payload.longProfitRatio ?? "";
+  tr.dataset.short = payload.shortProfitRatio ?? "";
   cells[1].textContent = formatRatio(payload.longProfitRatio);
   cells[2].textContent = formatRatio(payload.shortProfitRatio);
+  applyWarningClass(cells[1], payload.longProfitRatio);
+  applyWarningClass(cells[2], payload.shortProfitRatio);
+}
+
+function updateWarningStyles() {
+  tableBody.querySelectorAll("tr").forEach((row) => {
+    const cells = row.querySelectorAll("td");
+    if (cells.length < 3) {
+      return;
+    }
+    const longValue = row.dataset.long === "" ? null : Number(row.dataset.long);
+    const shortValue = row.dataset.short === "" ? null : Number(row.dataset.short);
+    applyWarningClass(cells[1], Number.isNaN(longValue) ? null : longValue);
+    applyWarningClass(cells[2], Number.isNaN(shortValue) ? null : shortValue);
+  });
 }
 
 async function refreshSymbolRow(button) {
@@ -207,7 +251,9 @@ function setRefreshTimer() {
 }
 
 refreshIntervalInput.addEventListener("input", setRefreshTimer);
+warningThresholdInput.addEventListener("input", updateWarningStyles);
 
 initSorting();
 fetchData();
 setRefreshTimer();
+updateWarningStyles();

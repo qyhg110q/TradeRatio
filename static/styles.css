@@ -111,6 +111,11 @@ header p {
   color: #4d5761;
 }
 
+.ratio-warning {
+  color: #b42318;
+  font-weight: 700;
+}
+
 .row-refresh {
   padding: 6px 10px;
   border-radius: 6px;

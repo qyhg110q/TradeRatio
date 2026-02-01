@@ -111,6 +111,20 @@ header p {
   color: #4d5761;
 }
 
+.row-refresh {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #d0d5dd;
+  background: #ffffff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.row-refresh:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .status {
   color: #4d5761;
 }

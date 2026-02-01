@@ -153,6 +153,14 @@ def serialize_ratios(ratios: Iterable[ProfitRatio]) -> list[dict[str, Any]]:
     ]
 
 
+def serialize_ratio(ratio: ProfitRatio) -> dict[str, Any]:
+    return {
+        "symbol": ratio.symbol,
+        "longProfitRatio": ratio.long_profit_ratio,
+        "shortProfitRatio": ratio.short_profit_ratio,
+    }
+
+
 def create_app() -> "Flask":
     import requests
     from flask import Flask, jsonify, render_template, request
@@ -211,6 +219,30 @@ def create_app() -> "Flask":
                 "data": serialize_ratios(page_items),
             }
         )
+
+    @app.route("/api/profit-ratio")
+    def profit_ratio() -> Any:
+        symbol = request.args.get("symbol", "").strip().upper()
+        if not symbol:
+            return jsonify({"error": "Symbol is required."}), 400
+
+        with requests.Session() as session:
+            try:
+                payload_response = session.get(
+                    BINANCE_SMART_MONEY_URL,
+                    params={"symbol": symbol},
+                    timeout=REQUEST_TIMEOUT,
+                )
+                payload_response.raise_for_status()
+                payload = payload_response.json()
+            except (requests.RequestException, ValueError) as exc:
+                return (
+                    jsonify({"error": "Failed to fetch symbol profit ratio.", "details": str(exc)}),
+                    502,
+                )
+
+        ratio = parse_profit_ratio(symbol, payload)
+        return jsonify(serialize_ratio(ratio))
 
     return app
 

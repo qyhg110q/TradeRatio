@@ -14,6 +14,7 @@ let sortKey = "symbol";
 let sortOrder = "asc";
 let useMockData = new URLSearchParams(window.location.search).get("mock") === "1";
 let refreshTimer = null;
+const lastRowRefresh = new Map();
 
 function formatRatio(value) {
   if (value === null || value === undefined) {
@@ -56,6 +57,11 @@ async function refreshSymbolRow(button) {
   if (!symbol) {
     return;
   }
+  const lastRefresh = lastRowRefresh.get(symbol);
+  if (lastRefresh && Date.now() - lastRefresh < 3000) {
+    setStatus(`请稍候再刷新 ${symbol}。`, true);
+    return;
+  }
   if (useMockData) {
     setStatus("Mock 数据模式无法单独刷新，请切换到实时数据。", true);
     return;
@@ -76,7 +82,12 @@ async function refreshSymbolRow(button) {
     }
     const payload = await response.json();
     updateRow(row, payload);
-    setStatus(`已刷新 ${symbol}。`);
+    if (payload.stale) {
+      setStatus(`${symbol} 刷新失败，已使用缓存数据。`, true);
+    } else {
+      setStatus(`已刷新 ${symbol}。`);
+    }
+    lastRowRefresh.set(symbol, Date.now());
   } catch (error) {
     console.error(error);
     setStatus(`无法刷新 ${symbol}。`, true);

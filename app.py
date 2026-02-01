@@ -21,9 +21,11 @@ MAX_PER_PAGE = 200
 REQUEST_TIMEOUT = 6
 FETCH_WORKERS = 24
 CACHE_TTL_SECONDS = 60
+SYMBOL_CACHE_TTL_SECONDS = 15
 
 _cache_lock = threading.Lock()
 _cache_state: dict[str, Any] = {"timestamp": 0.0, "data": []}
+_symbol_cache: dict[str, dict[str, Any]] = {}
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,22 @@ def cache_is_fresh() -> bool:
     return (time.time() - timestamp) < CACHE_TTL_SECONDS
 
 
+def get_cached_symbol(symbol: str) -> ProfitRatio | None:
+    with _cache_lock:
+        entry = _symbol_cache.get(symbol)
+        if not entry:
+            return None
+        timestamp = entry.get("timestamp", 0.0)
+        if (time.time() - timestamp) >= SYMBOL_CACHE_TTL_SECONDS:
+            return None
+        return entry.get("data")
+
+
+def set_cached_symbol(symbol: str, ratio: ProfitRatio) -> None:
+    with _cache_lock:
+        _symbol_cache[symbol] = {"timestamp": time.time(), "data": ratio}
+
+
 def sort_profit_ratios(
     ratios: list[ProfitRatio],
     sort_key: str,
@@ -153,11 +171,12 @@ def serialize_ratios(ratios: Iterable[ProfitRatio]) -> list[dict[str, Any]]:
     ]
 
 
-def serialize_ratio(ratio: ProfitRatio) -> dict[str, Any]:
+def serialize_ratio(ratio: ProfitRatio, stale: bool = False) -> dict[str, Any]:
     return {
         "symbol": ratio.symbol,
         "longProfitRatio": ratio.long_profit_ratio,
         "shortProfitRatio": ratio.short_profit_ratio,
+        "stale": stale,
     }
 
 
@@ -226,6 +245,10 @@ def create_app() -> "Flask":
         if not symbol:
             return jsonify({"error": "Symbol is required."}), 400
 
+        cached_ratio = get_cached_symbol(symbol)
+        if cached_ratio:
+            return jsonify(serialize_ratio(cached_ratio))
+
         with requests.Session() as session:
             try:
                 payload_response = session.get(
@@ -236,12 +259,16 @@ def create_app() -> "Flask":
                 payload_response.raise_for_status()
                 payload = payload_response.json()
             except (requests.RequestException, ValueError) as exc:
+                fallback_ratio = get_cached_symbol(symbol)
+                if fallback_ratio:
+                    return jsonify(serialize_ratio(fallback_ratio, stale=True))
                 return (
                     jsonify({"error": "Failed to fetch symbol profit ratio.", "details": str(exc)}),
                     502,
                 )
 
         ratio = parse_profit_ratio(symbol, payload)
+        set_cached_symbol(symbol, ratio)
         return jsonify(serialize_ratio(ratio))
 
     return app

@@ -51,6 +51,17 @@
                 <input id="shortWarningSound" type="checkbox" />
                 Short 低于警告值时提示音
               </label>
+              <div class="sound-volume">
+                <label for="warningVolume">提示音音量</label>
+                <input
+                  id="warningVolume"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value="0.08"
+                />
+              </div>
             </div>
             <button id="refreshBtn" class="primary" type="button">立即刷新</button>
             <div class="auto-refresh" id="autoRefreshStatus">自动刷新：未启用</div>

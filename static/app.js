@@ -5,6 +5,7 @@ const refreshIntervalInput = document.getElementById("refreshInterval");
 const warningThresholdInput = document.getElementById("warningThreshold");
 const longWarningSoundInput = document.getElementById("longWarningSound");
 const shortWarningSoundInput = document.getElementById("shortWarningSound");
+const warningVolumeInput = document.getElementById("warningVolume");
 const refreshBtn = document.getElementById("refreshBtn");
 const autoRefreshStatus = document.getElementById("autoRefreshStatus");
 const prevBtn = document.getElementById("prevBtn");
@@ -37,6 +38,14 @@ function getWarningThreshold() {
   return threshold;
 }
 
+function getWarningVolume() {
+  const volume = Number(warningVolumeInput.value);
+  if (Number.isNaN(volume)) {
+    return 0.08;
+  }
+  return Math.min(Math.max(volume, 0), 1);
+}
+
 function playWarningSound() {
   try {
     if (!audioContext) {
@@ -49,7 +58,7 @@ function playWarningSound() {
     const gainNode = audioContext.createGain();
     oscillator.type = "sine";
     oscillator.frequency.value = 880;
-    gainNode.gain.value = 0.08;
+    gainNode.gain.value = getWarningVolume();
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
     oscillator.start();
@@ -298,6 +307,7 @@ function setRefreshTimer() {
 
 refreshIntervalInput.addEventListener("input", setRefreshTimer);
 warningThresholdInput.addEventListener("input", updateWarningStyles);
+warningVolumeInput.addEventListener("change", playWarningSound);
 
 initSorting();
 fetchData();

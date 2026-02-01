@@ -123,6 +123,16 @@ header p {
   margin-right: 6px;
 }
 
+.sound-volume {
+  display: grid;
+  gap: 4px;
+  color: #4d5761;
+}
+
+.sound-volume input[type="range"] {
+  width: 180px;
+}
+
 .ratio-warning {
   color: #b42318;
   font-weight: 700;

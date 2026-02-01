@@ -27,12 +27,20 @@
               <option value="200">200</option>
             </select>
           </div>
-          <div>
-            <label for="refreshInterval">自动刷新时间（秒）</label>
-            <input id="refreshInterval" type="number" min="0" value="0" />
+        </div>
+        <div class="refresh-panel">
+          <div class="refresh-header">
+            <h2>刷新与自动刷新</h2>
+            <p>在此处手动刷新数据或设置自动刷新间隔。</p>
           </div>
-          <button id="refreshBtn" class="primary" type="button">立即刷新</button>
-          <div class="auto-refresh" id="autoRefreshStatus">自动刷新：未启用</div>
+          <div class="refresh-controls">
+            <div>
+              <label for="refreshInterval">自动刷新时间（秒）</label>
+              <input id="refreshInterval" type="number" min="0" value="0" />
+            </div>
+            <button id="refreshBtn" class="primary" type="button">立即刷新</button>
+            <div class="auto-refresh" id="autoRefreshStatus">自动刷新：未启用</div>
+          </div>
         </div>
         <div class="status" id="status">Loading data…</div>
       </section>

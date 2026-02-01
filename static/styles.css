@@ -111,6 +111,18 @@ header p {
   color: #4d5761;
 }
 
+.warning-sound {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: #4d5761;
+}
+
+.warning-sound input[type="checkbox"] {
+  margin-right: 6px;
+}
+
 .ratio-warning {
   color: #b42318;
   font-weight: 700;

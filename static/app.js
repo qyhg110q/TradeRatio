@@ -3,6 +3,8 @@ const statusEl = document.getElementById("status");
 const perPageSelect = document.getElementById("perPage");
 const refreshIntervalInput = document.getElementById("refreshInterval");
 const warningThresholdInput = document.getElementById("warningThreshold");
+const longWarningSoundInput = document.getElementById("longWarningSound");
+const shortWarningSoundInput = document.getElementById("shortWarningSound");
 const refreshBtn = document.getElementById("refreshBtn");
 const autoRefreshStatus = document.getElementById("autoRefreshStatus");
 const prevBtn = document.getElementById("prevBtn");
@@ -16,6 +18,9 @@ let sortOrder = "asc";
 let useMockData = new URLSearchParams(window.location.search).get("mock") === "1";
 let refreshTimer = null;
 const lastRowRefresh = new Map();
+const lastWarningSound = new Map();
+const warningSoundCooldownMs = 5000;
+let audioContext = null;
 
 function formatRatio(value) {
   if (value === null || value === undefined) {
@@ -32,17 +37,58 @@ function getWarningThreshold() {
   return threshold;
 }
 
-function applyWarningClass(cell, value) {
-  if (!cell) {
+function playWarningSound() {
+  try {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = 880;
+    gainNode.gain.value = 0.08;
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 0.18);
+  } catch (error) {
+    console.warn("Audio warning not available.", error);
+  }
+}
+
+function maybePlayWarningSound(type, symbol) {
+  const enabled =
+    (type === "long" && longWarningSoundInput.checked) ||
+    (type === "short" && shortWarningSoundInput.checked);
+  if (!enabled) {
     return;
   }
-  if (value === null || value === undefined) {
-    cell.classList.remove("ratio-warning");
+  const key = `${type}:${symbol}`;
+  const lastPlayed = lastWarningSound.get(key);
+  const now = Date.now();
+  if (lastPlayed && now - lastPlayed < warningSoundCooldownMs) {
     return;
   }
+  lastWarningSound.set(key, now);
+  playWarningSound();
+}
+
+function applyWarningState(tr, cell, value, type) {
+  const hasValue = value !== null && value !== undefined;
   const threshold = getWarningThreshold();
-  const valuePercent = value * 100;
-  cell.classList.toggle("ratio-warning", valuePercent < threshold);
+  const isWarning = hasValue && value * 100 < threshold;
+  if (cell) {
+    cell.classList.toggle("ratio-warning", isWarning);
+  }
+  const dataKey = type === "long" ? "warnLong" : "warnShort";
+  const prevWarning = tr.dataset[dataKey] === "true";
+  tr.dataset[dataKey] = String(isWarning);
+  if (isWarning && !prevWarning) {
+    maybePlayWarningSound(type, tr.dataset.symbol || "");
+  }
 }
 
 function setStatus(message, isError = false) {
@@ -64,8 +110,8 @@ function renderTable(rows) {
       <td><button class="row-refresh" type="button" data-symbol="${row.symbol}">刷新</button></td>
     `;
     const cells = tr.querySelectorAll("td");
-    applyWarningClass(cells[1], row.longProfitRatio);
-    applyWarningClass(cells[2], row.shortProfitRatio);
+    applyWarningState(tr, cells[1], row.longProfitRatio, "long");
+    applyWarningState(tr, cells[2], row.shortProfitRatio, "short");
     tableBody.appendChild(tr);
   });
 }
@@ -79,8 +125,8 @@ function updateRow(tr, payload) {
   tr.dataset.short = payload.shortProfitRatio ?? "";
   cells[1].textContent = formatRatio(payload.longProfitRatio);
   cells[2].textContent = formatRatio(payload.shortProfitRatio);
-  applyWarningClass(cells[1], payload.longProfitRatio);
-  applyWarningClass(cells[2], payload.shortProfitRatio);
+  applyWarningState(tr, cells[1], payload.longProfitRatio, "long");
+  applyWarningState(tr, cells[2], payload.shortProfitRatio, "short");
 }
 
 function updateWarningStyles() {
@@ -91,8 +137,8 @@ function updateWarningStyles() {
     }
     const longValue = row.dataset.long === "" ? null : Number(row.dataset.long);
     const shortValue = row.dataset.short === "" ? null : Number(row.dataset.short);
-    applyWarningClass(cells[1], Number.isNaN(longValue) ? null : longValue);
-    applyWarningClass(cells[2], Number.isNaN(shortValue) ? null : shortValue);
+    applyWarningState(row, cells[1], Number.isNaN(longValue) ? null : longValue, "long");
+    applyWarningState(row, cells[2], Number.isNaN(shortValue) ? null : shortValue, "short");
   });
 }
 

@@ -196,7 +196,7 @@ async function refreshSymbolRow(button) {
   }
 }
 
-async function fetchData({ forceRefresh = false } = {}) {
+async function fetchData({ forceRefresh = false, allowMockFallback = false } = {}) {
   const perPage = Number(perPageSelect.value);
   const endpoint = useMockData ? "/static/mock-data.json" : "/api/profit-ratios";
   const url = new URL(endpoint, window.location.origin);
@@ -233,10 +233,18 @@ async function fetchData({ forceRefresh = false } = {}) {
     setStatus("Data loaded.");
   } catch (error) {
     console.error(error);
-    setStatus("Unable to load live data. Showing mock data instead.", true);
-    useMockData = true;
-    currentPage = 1;
-    await fetchData();
+    if (useMockData) {
+      setStatus("Unable to load mock data.", true);
+      return;
+    }
+    if (allowMockFallback) {
+      setStatus("Unable to load live data. Showing mock data instead.", true);
+      useMockData = true;
+      currentPage = 1;
+      await fetchData({ allowMockFallback: false });
+      return;
+    }
+    setStatus("无法获取最新数据，请稍后重试。", true);
   }
 }
 
@@ -310,6 +318,6 @@ warningThresholdInput.addEventListener("input", updateWarningStyles);
 warningVolumeInput.addEventListener("change", playWarningSound);
 
 initSorting();
-fetchData();
+fetchData({ allowMockFallback: true });
 setRefreshTimer();
 updateWarningStyles();

@@ -196,12 +196,17 @@ async function refreshSymbolRow(button) {
   }
 }
 
-async function fetchData({ forceRefresh = false, allowMockFallback = false } = {}) {
+async function fetchData({
+  forceRefresh = false,
+  allowMockFallback = false,
+  tryLiveWhenMocked = false,
+} = {}) {
   const perPage = Number(perPageSelect.value);
-  const endpoint = useMockData ? "/static/mock-data.json" : "/api/profit-ratios";
+  const shouldTryLive = !useMockData || (useMockData && tryLiveWhenMocked);
+  const endpoint = shouldTryLive ? "/api/profit-ratios" : "/static/mock-data.json";
   const url = new URL(endpoint, window.location.origin);
 
-  if (!useMockData) {
+  if (shouldTryLive) {
     url.searchParams.set("page", currentPage);
     url.searchParams.set("per_page", perPage);
     url.searchParams.set("sort", sortKey);
@@ -219,12 +224,13 @@ async function fetchData({ forceRefresh = false, allowMockFallback = false } = {
       throw new Error(`Request failed with status ${response.status}`);
     }
     const payload = await response.json();
-    if (useMockData) {
+    if (!shouldTryLive) {
       renderTable(payload.data);
       totalPages = 1;
       pageInfo.textContent = "Mock data";
     } else {
       renderTable(payload.data);
+      useMockData = false;
       totalPages = payload.totalPages || 1;
       pageInfo.textContent = `Page ${payload.page} of ${totalPages}`;
     }
@@ -233,7 +239,7 @@ async function fetchData({ forceRefresh = false, allowMockFallback = false } = {
     setStatus("Data loaded.");
   } catch (error) {
     console.error(error);
-    if (useMockData) {
+    if (!shouldTryLive) {
       setStatus("Unable to load mock data.", true);
       return;
     }
@@ -294,7 +300,7 @@ perPageSelect.addEventListener("change", () => {
 });
 
 refreshBtn.addEventListener("click", () => {
-  fetchData({ forceRefresh: true });
+  fetchData({ forceRefresh: true, tryLiveWhenMocked: true });
 });
 
 function setRefreshTimer() {
@@ -305,7 +311,7 @@ function setRefreshTimer() {
   const seconds = Number(refreshIntervalInput.value);
   if (!Number.isNaN(seconds) && seconds > 0) {
     refreshTimer = setInterval(() => {
-      fetchData({ forceRefresh: true });
+      fetchData({ forceRefresh: true, tryLiveWhenMocked: true });
     }, seconds * 1000);
     autoRefreshStatus.textContent = `自动刷新：每 ${seconds} 秒`;
   } else {
@@ -318,6 +324,6 @@ warningThresholdInput.addEventListener("input", updateWarningStyles);
 warningVolumeInput.addEventListener("change", playWarningSound);
 
 initSorting();
-fetchData({ allowMockFallback: true });
+fetchData({ allowMockFallback: true, tryLiveWhenMocked: true });
 setRefreshTimer();
 updateWarningStyles();

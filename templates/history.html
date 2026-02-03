@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Contract History</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <h1 id="historyTitle">Contract History</h1>
+        <p>查看合约价格与多空收益率随时间的变化。</p>
+        <a href="/">返回首页</a>
+      </header>
+
+      <section class="table-wrapper">
+        <canvas id="historyChart" height="320"></canvas>
+      </section>
+
+      <div class="status" id="historyStatus">Loading history…</div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="/static/history.js"></script>
+  </body>
+</html>

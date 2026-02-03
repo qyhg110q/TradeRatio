@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import math
 import os
+import sqlite3
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Iterable, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -15,15 +17,19 @@ BINANCE_EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo"
 BINANCE_SMART_MONEY_URL = (
     "https://www.binance.com/bapi/futures/v1/public/future/smart-money/signal/overview"
 )
+BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/ticker/price"
 
 DEFAULT_PER_PAGE = 50
 MAX_PER_PAGE = 200
-REQUEST_TIMEOUT = 10
-FETCH_WORKERS = 12
+REQUEST_TIMEOUT = 6
+FETCH_WORKERS = 24
 CACHE_TTL_SECONDS = 60
+SYMBOL_CACHE_TTL_SECONDS = 15
+HISTORY_DB_PATH = os.environ.get("HISTORY_DB_PATH", "data/history.db")
 
 _cache_lock = threading.Lock()
 _cache_state: dict[str, Any] = {"timestamp": 0.0, "data": []}
+_symbol_cache: dict[str, dict[str, Any]] = {}
 
 
 @dataclass(frozen=True)
@@ -31,6 +37,7 @@ class ProfitRatio:
     symbol: str
     long_profit_ratio: float | None
     short_profit_ratio: float | None
+    price: float | None
 
 
 def safe_ratio(numerator: float | int, denominator: float | int) -> float | None:
@@ -39,7 +46,9 @@ def safe_ratio(numerator: float | int, denominator: float | int) -> float | None
     return float(numerator) / float(denominator)
 
 
-def parse_profit_ratio(symbol: str, payload: dict[str, Any]) -> ProfitRatio:
+def parse_profit_ratio(
+    symbol: str, payload: dict[str, Any], price: float | None = None
+) -> ProfitRatio:
     data = payload.get("data") or {}
     long_profit = safe_ratio(
         data.get("longProfitTraders", 0),
@@ -49,7 +58,12 @@ def parse_profit_ratio(symbol: str, payload: dict[str, Any]) -> ProfitRatio:
         data.get("shortProfitTraders", 0),
         data.get("shortTraders", 0),
     )
-    return ProfitRatio(symbol=symbol, long_profit_ratio=long_profit, short_profit_ratio=short_profit)
+    return ProfitRatio(
+        symbol=symbol,
+        long_profit_ratio=long_profit,
+        short_profit_ratio=short_profit,
+        price=price,
+    )
 
 
 def fetch_active_symbols(session: "requests.Session") -> list[str]:
@@ -83,13 +97,95 @@ def fetch_profit_ratios(session: "requests.Session", symbols: Iterable[str]) -> 
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError):
-            return ProfitRatio(symbol=symbol, long_profit_ratio=None, short_profit_ratio=None)
+            return ProfitRatio(
+                symbol=symbol, long_profit_ratio=None, short_profit_ratio=None, price=None
+            )
         return parse_profit_ratio(symbol, payload)
 
     from concurrent.futures import ThreadPoolExecutor
 
     with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as executor:
         return list(executor.map(fetch_symbol, symbols))
+
+
+def fetch_prices(session: "requests.Session") -> dict[str, float]:
+    response = session.get(BINANCE_PRICE_URL, timeout=REQUEST_TIMEOUT)
+    response.raise_for_status()
+    data = response.json()
+    prices: dict[str, float] = {}
+    for item in data:
+        symbol = item.get("symbol")
+        price_str = item.get("price")
+        if symbol and price_str is not None:
+            try:
+                prices[symbol] = float(price_str)
+            except (TypeError, ValueError):
+                continue
+    return prices
+
+
+def init_history_db() -> None:
+    os.makedirs(os.path.dirname(HISTORY_DB_PATH), exist_ok=True)
+    with sqlite3.connect(HISTORY_DB_PATH) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS history (
+                symbol TEXT NOT NULL,
+                ts INTEGER NOT NULL,
+                price REAL,
+                long_ratio REAL,
+                short_ratio REAL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_history_symbol_ts ON history(symbol, ts)")
+
+
+def record_ratios(ratios: Iterable[ProfitRatio], timestamp: int) -> None:
+    rows = [
+        (
+            ratio.symbol,
+            timestamp,
+            ratio.price,
+            ratio.long_profit_ratio,
+            ratio.short_profit_ratio,
+        )
+        for ratio in ratios
+    ]
+    if not rows:
+        return
+    with sqlite3.connect(HISTORY_DB_PATH) as conn:
+        conn.executemany(
+            """
+            INSERT INTO history (symbol, ts, price, long_ratio, short_ratio)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+
+
+def get_symbol_history(symbol: str, limit: int = 500) -> list[dict[str, Any]]:
+    with sqlite3.connect(HISTORY_DB_PATH) as conn:
+        cursor = conn.execute(
+            """
+            SELECT ts, price, long_ratio, short_ratio
+            FROM history
+            WHERE symbol = ?
+            ORDER BY ts ASC
+            LIMIT ?
+            """,
+            (symbol, limit),
+        )
+        rows = cursor.fetchall()
+    return [
+        {
+            "timestamp": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+            "price": price,
+            "longProfitRatio": long_ratio,
+            "shortProfitRatio": short_ratio,
+        }
+        for ts, price, long_ratio, short_ratio in rows
+    ]
 
 
 def get_cached_ratios() -> list[ProfitRatio]:
@@ -107,6 +203,22 @@ def cache_is_fresh() -> bool:
     with _cache_lock:
         timestamp = _cache_state["timestamp"]
     return (time.time() - timestamp) < CACHE_TTL_SECONDS
+
+
+def get_cached_symbol(symbol: str) -> ProfitRatio | None:
+    with _cache_lock:
+        entry = _symbol_cache.get(symbol)
+        if not entry:
+            return None
+        timestamp = entry.get("timestamp", 0.0)
+        if (time.time() - timestamp) >= SYMBOL_CACHE_TTL_SECONDS:
+            return None
+        return entry.get("data")
+
+
+def set_cached_symbol(symbol: str, ratio: ProfitRatio) -> None:
+    with _cache_lock:
+        _symbol_cache[symbol] = {"timestamp": time.time(), "data": ratio}
 
 
 def sort_profit_ratios(
@@ -148,9 +260,20 @@ def serialize_ratios(ratios: Iterable[ProfitRatio]) -> list[dict[str, Any]]:
             "symbol": ratio.symbol,
             "longProfitRatio": ratio.long_profit_ratio,
             "shortProfitRatio": ratio.short_profit_ratio,
+            "price": ratio.price,
         }
         for ratio in ratios
     ]
+
+
+def serialize_ratio(ratio: ProfitRatio, stale: bool = False) -> dict[str, Any]:
+    return {
+        "symbol": ratio.symbol,
+        "longProfitRatio": ratio.long_profit_ratio,
+        "shortProfitRatio": ratio.short_profit_ratio,
+        "price": ratio.price,
+        "stale": stale,
+    }
 
 
 def create_app() -> "Flask":
@@ -158,10 +281,15 @@ def create_app() -> "Flask":
     from flask import Flask, jsonify, render_template, request
 
     app = Flask(__name__, static_folder="static", template_folder="templates")
+    init_history_db()
 
     @app.route("/")
     def index() -> str:
         return render_template("index.html")
+
+    @app.route("/history")
+    def history_view() -> str:
+        return render_template("history.html")
 
     @app.route("/api/profit-ratios")
     def profit_ratios() -> Any:
@@ -194,7 +322,21 @@ def create_app() -> "Flask":
                     )
 
                 ratios = fetch_profit_ratios(session, symbols)
+                try:
+                    prices = fetch_prices(session)
+                except (requests.RequestException, ValueError):
+                    prices = {}
+                ratios = [
+                    ProfitRatio(
+                        symbol=ratio.symbol,
+                        long_profit_ratio=ratio.long_profit_ratio,
+                        short_profit_ratio=ratio.short_profit_ratio,
+                        price=prices.get(ratio.symbol),
+                    )
+                    for ratio in ratios
+                ]
             set_cached_ratios(ratios)
+            record_ratios(ratios, int(time.time()))
 
         ratios = sort_profit_ratios(ratios, sort_key, order)
         page_items, total = paginate(ratios, page, per_page)
@@ -211,6 +353,63 @@ def create_app() -> "Flask":
                 "data": serialize_ratios(page_items),
             }
         )
+
+    @app.route("/api/profit-ratio")
+    def profit_ratio() -> Any:
+        symbol = request.args.get("symbol", "").strip().upper()
+        if not symbol:
+            return jsonify({"error": "Symbol is required."}), 400
+
+        cached_ratio = get_cached_symbol(symbol)
+        if cached_ratio:
+            return jsonify(serialize_ratio(cached_ratio))
+
+        with requests.Session() as session:
+            try:
+                payload_response = session.get(
+                    BINANCE_SMART_MONEY_URL,
+                    params={"symbol": symbol},
+                    timeout=REQUEST_TIMEOUT,
+                )
+                payload_response.raise_for_status()
+                payload = payload_response.json()
+            except (requests.RequestException, ValueError) as exc:
+                fallback_ratio = get_cached_symbol(symbol)
+                if fallback_ratio:
+                    return jsonify(serialize_ratio(fallback_ratio, stale=True))
+                return (
+                    jsonify({"error": "Failed to fetch symbol profit ratio.", "details": str(exc)}),
+                    502,
+                )
+
+            try:
+                price_response = session.get(
+                    BINANCE_PRICE_URL,
+                    params={"symbol": symbol},
+                    timeout=REQUEST_TIMEOUT,
+                )
+                price_response.raise_for_status()
+                price_payload = price_response.json()
+                price_value = float(price_payload.get("price"))
+            except (requests.RequestException, ValueError, TypeError):
+                price_value = None
+
+        ratio = parse_profit_ratio(symbol, payload, price_value)
+        set_cached_symbol(symbol, ratio)
+        record_ratios([ratio], int(time.time()))
+        return jsonify(serialize_ratio(ratio))
+
+    @app.route("/api/history")
+    def history() -> Any:
+        symbol = request.args.get("symbol", "").strip().upper()
+        if not symbol:
+            return jsonify({"error": "Symbol is required."}), 400
+        try:
+            limit = int(request.args.get("limit", 500))
+        except ValueError:
+            limit = 500
+        limit = max(1, min(limit, 2000))
+        return jsonify({"symbol": symbol, "data": get_symbol_history(symbol, limit)})
 
     return app
 

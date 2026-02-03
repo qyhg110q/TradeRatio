@@ -26,10 +26,15 @@ FETCH_WORKERS = 24
 CACHE_TTL_SECONDS = 60
 SYMBOL_CACHE_TTL_SECONDS = 15
 HISTORY_DB_PATH = os.environ.get("HISTORY_DB_PATH", "data/history.db")
+DEFAULT_REFRESH_INTERVAL_SECONDS = int(os.environ.get("REFRESH_INTERVAL_SECONDS", "30"))
 
 _cache_lock = threading.Lock()
 _cache_state: dict[str, Any] = {"timestamp": 0.0, "data": []}
 _symbol_cache: dict[str, dict[str, Any]] = {}
+_refresh_interval_lock = threading.Lock()
+_refresh_interval_seconds = DEFAULT_REFRESH_INTERVAL_SECONDS
+_refresh_thread_started = False
+_refresh_stop_event = threading.Event()
 
 
 @dataclass(frozen=True)
@@ -221,6 +226,61 @@ def set_cached_symbol(symbol: str, ratio: ProfitRatio) -> None:
         _symbol_cache[symbol] = {"timestamp": time.time(), "data": ratio}
 
 
+def get_refresh_interval_seconds() -> int:
+    with _refresh_interval_lock:
+        return _refresh_interval_seconds
+
+
+def set_refresh_interval_seconds(value: int) -> int:
+    sanitized = max(1, min(int(value), 3600))
+    with _refresh_interval_lock:
+        global _refresh_interval_seconds
+        _refresh_interval_seconds = sanitized
+    return sanitized
+
+
+def background_refresh_loop() -> None:
+    import requests
+
+    with requests.Session() as session:
+        while not _refresh_stop_event.is_set():
+            start_time = time.time()
+            try:
+                symbols = fetch_active_symbols(session)
+                ratios = fetch_profit_ratios(session, symbols)
+                try:
+                    prices = fetch_prices(session)
+                except (requests.RequestException, ValueError):
+                    prices = {}
+                ratios = [
+                    ProfitRatio(
+                        symbol=ratio.symbol,
+                        long_profit_ratio=ratio.long_profit_ratio,
+                        short_profit_ratio=ratio.short_profit_ratio,
+                        price=prices.get(ratio.symbol),
+                    )
+                    for ratio in ratios
+                ]
+                set_cached_ratios(ratios)
+                record_ratios(ratios, int(time.time()))
+            except (requests.RequestException, ValueError) as exc:
+                print(f"[refresh] failed to update ratios: {exc}")
+
+            elapsed = time.time() - start_time
+            interval = get_refresh_interval_seconds()
+            sleep_for = max(1.0, interval - elapsed)
+            _refresh_stop_event.wait(sleep_for)
+
+
+def ensure_background_refresh_started() -> None:
+    global _refresh_thread_started
+    if _refresh_thread_started:
+        return
+    _refresh_thread_started = True
+    thread = threading.Thread(target=background_refresh_loop, daemon=True)
+    thread.start()
+
+
 def sort_profit_ratios(
     ratios: list[ProfitRatio],
     sort_key: str,
@@ -282,6 +342,7 @@ def create_app() -> "Flask":
 
     app = Flask(__name__, static_folder="static", template_folder="templates")
     init_history_db()
+    ensure_background_refresh_started()
 
     @app.route("/")
     def index() -> str:
@@ -410,6 +471,19 @@ def create_app() -> "Flask":
             limit = 500
         limit = max(1, min(limit, 2000))
         return jsonify({"symbol": symbol, "data": get_symbol_history(symbol, limit)})
+
+    @app.route("/api/refresh-interval", methods=["GET", "POST"])
+    def refresh_interval() -> Any:
+        if request.method == "GET":
+            return jsonify({"seconds": get_refresh_interval_seconds()})
+        payload = request.get_json(silent=True) or {}
+        value = payload.get("seconds", request.form.get("seconds", DEFAULT_REFRESH_INTERVAL_SECONDS))
+        try:
+            seconds = int(value)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid seconds value."}), 400
+        seconds = set_refresh_interval_seconds(seconds)
+        return jsonify({"seconds": seconds})
 
     return app
 

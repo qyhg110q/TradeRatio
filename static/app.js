@@ -333,6 +333,29 @@ function setRefreshTimer() {
 }
 
 refreshIntervalInput.addEventListener("input", setRefreshTimer);
+refreshIntervalInput.addEventListener("change", async () => {
+  const seconds = Number(refreshIntervalInput.value);
+  if (Number.isNaN(seconds)) {
+    return;
+  }
+  try {
+    const response = await fetch("/api/refresh-interval", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seconds }),
+    });
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    if (typeof payload.seconds === "number") {
+      refreshIntervalInput.value = String(payload.seconds);
+      setRefreshTimer();
+    }
+  } catch (error) {
+    console.warn("Unable to update backend refresh interval.", error);
+  }
+});
 warningThresholdInput.addEventListener("input", updateWarningStyles);
 warningVolumeInput.addEventListener("change", playWarningSound);
 
@@ -340,3 +363,21 @@ initSorting();
 fetchData({ allowMockFallback: true, tryLiveWhenMocked: true });
 setRefreshTimer();
 updateWarningStyles();
+
+async function syncBackendRefreshInterval() {
+  try {
+    const response = await fetch("/api/refresh-interval");
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    if (typeof payload.seconds === "number") {
+      refreshIntervalInput.value = String(payload.seconds);
+      setRefreshTimer();
+    }
+  } catch (error) {
+    console.warn("Unable to load backend refresh interval.", error);
+  }
+}
+
+syncBackendRefreshInterval();

@@ -18,6 +18,7 @@ BINANCE_SMART_MONEY_URL = (
     "https://www.binance.com/bapi/futures/v1/public/future/smart-money/signal/overview"
 )
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/ticker/price"
+BINANCE_HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 DEFAULT_PER_PAGE = 50
 MAX_PER_PAGE = 200
@@ -75,7 +76,9 @@ def parse_profit_ratio(
 def fetch_active_symbols(session: "requests.Session") -> list[str]:
     import requests
 
-    response = session.get(BINANCE_EXCHANGE_INFO_URL, timeout=REQUEST_TIMEOUT)
+    response = session.get(
+        BINANCE_EXCHANGE_INFO_URL, timeout=REQUEST_TIMEOUT, headers=BINANCE_HEADERS
+    )
     response.raise_for_status()
     data = response.json()
     symbols = []
@@ -95,10 +98,11 @@ def fetch_profit_ratios(session: "requests.Session", symbols: Iterable[str]) -> 
 
     def fetch_symbol(symbol: str) -> ProfitRatio:
         try:
-            response = requests.get(
+            response = session.get(
                 BINANCE_SMART_MONEY_URL,
                 params={"symbol": symbol},
                 timeout=REQUEST_TIMEOUT,
+                headers=BINANCE_HEADERS,
             )
             response.raise_for_status()
             payload = response.json()
@@ -115,7 +119,7 @@ def fetch_profit_ratios(session: "requests.Session", symbols: Iterable[str]) -> 
 
 
 def fetch_prices(session: "requests.Session") -> dict[str, float]:
-    response = session.get(BINANCE_PRICE_URL, timeout=REQUEST_TIMEOUT)
+    response = session.get(BINANCE_PRICE_URL, timeout=REQUEST_TIMEOUT, headers=BINANCE_HEADERS)
     response.raise_for_status()
     data = response.json()
     prices: dict[str, float] = {}
@@ -284,6 +288,11 @@ def refresh_all_ratios(session: "requests.Session") -> list[ProfitRatio]:
             )
             for ratio in ratios
         ]
+        if ratios and all(
+            ratio.long_profit_ratio is None and ratio.short_profit_ratio is None
+            for ratio in ratios
+        ):
+            raise ValueError("Smart money data unavailable.")
         cached_ratios = get_cached_ratios()
         ratios = _merge_with_cached_ratios(ratios, cached_ratios)
         set_cached_ratios(ratios)
@@ -452,6 +461,7 @@ def create_app() -> "Flask":
                     BINANCE_SMART_MONEY_URL,
                     params={"symbol": symbol},
                     timeout=REQUEST_TIMEOUT,
+                    headers=BINANCE_HEADERS,
                 )
                 payload_response.raise_for_status()
                 payload = payload_response.json()
@@ -469,6 +479,7 @@ def create_app() -> "Flask":
                     BINANCE_PRICE_URL,
                     params={"symbol": symbol},
                     timeout=REQUEST_TIMEOUT,
+                    headers=BINANCE_HEADERS,
                 )
                 price_response.raise_for_status()
                 price_payload = price_response.json()

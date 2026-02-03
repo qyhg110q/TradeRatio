@@ -9,9 +9,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable, TYPE_CHECKING
 
+import requests
+
 if TYPE_CHECKING:
     from flask import Flask
-    import requests
 
 BINANCE_EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo"
 BINANCE_SMART_MONEY_URL = (
@@ -288,13 +289,13 @@ def refresh_all_ratios(session: "requests.Session") -> list[ProfitRatio]:
             )
             for ratio in ratios
         ]
+        cached_ratios = get_cached_ratios()
+        ratios = _merge_with_cached_ratios(ratios, cached_ratios)
         if ratios and all(
             ratio.long_profit_ratio is None and ratio.short_profit_ratio is None
             for ratio in ratios
         ):
             raise ValueError("Smart money data unavailable.")
-        cached_ratios = get_cached_ratios()
-        ratios = _merge_with_cached_ratios(ratios, cached_ratios)
         set_cached_ratios(ratios)
         record_ratios(ratios, int(time.time()))
         return ratios

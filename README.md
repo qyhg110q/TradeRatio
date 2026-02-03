@@ -4,9 +4,10 @@ This project fetches Binance futures Smart Money signal data, calculates long/sh
 
 ## Features
 
-- **Backend API**: `/api/profit-ratios` returns long/short profit ratios for all active futures symbols.
+- **Backend API**: `/api/profit-ratios` returns cached long/short profit ratios for all active futures symbols.
 - **Frontend UI**: Responsive table with sorting and pagination.
 - **Mock Data Mode**: Add `?mock=1` to the URL to load sample data (or use it automatically when live data fails).
+- **Background Refresh**: The backend polls Binance on a configurable interval (default 30s) and records history even when the frontend is closed.
 - **Tests**: Validates ratio calculations and mock frontend data schema.
 
 ## Requirements
@@ -56,6 +57,20 @@ Response example:
       "shortProfitRatio": 0.8407
     }
   ]
+}
+```
+
+`GET /api/refresh-interval`
+
+Returns the current background refresh interval in seconds.
+
+`POST /api/refresh-interval`
+
+Set the background refresh interval in seconds.
+
+```json
+{
+  "seconds": 30
 }
 ```
 

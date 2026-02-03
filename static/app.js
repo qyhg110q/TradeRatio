@@ -209,11 +209,7 @@ async function refreshSymbolRow(button) {
   }
 }
 
-async function fetchData({
-  forceRefresh = false,
-  allowMockFallback = false,
-  tryLiveWhenMocked = false,
-} = {}) {
+async function fetchData({ allowMockFallback = false, tryLiveWhenMocked = false } = {}) {
   const perPage = Number(perPageSelect.value);
   const shouldTryLive = !useMockData || (useMockData && tryLiveWhenMocked);
   const endpoint = shouldTryLive ? "/api/profit-ratios" : "/static/mock-data.json";
@@ -224,9 +220,6 @@ async function fetchData({
     url.searchParams.set("per_page", perPage);
     url.searchParams.set("sort", sortKey);
     url.searchParams.set("order", sortOrder);
-    if (forceRefresh) {
-      url.searchParams.set("refresh", "1");
-    }
   }
 
   setStatus("Loading data…");
@@ -313,7 +306,7 @@ perPageSelect.addEventListener("change", () => {
 });
 
 refreshBtn.addEventListener("click", () => {
-  fetchData({ forceRefresh: true, tryLiveWhenMocked: true });
+  fetchData({ tryLiveWhenMocked: true });
 });
 
 function setRefreshTimer() {
@@ -324,7 +317,7 @@ function setRefreshTimer() {
   const seconds = Number(refreshIntervalInput.value);
   if (!Number.isNaN(seconds) && seconds > 0) {
     refreshTimer = setInterval(() => {
-      fetchData({ forceRefresh: true, tryLiveWhenMocked: true });
+      fetchData({ tryLiveWhenMocked: true });
     }, seconds * 1000);
     autoRefreshStatus.textContent = `自动刷新：每 ${seconds} 秒`;
   } else {
@@ -333,6 +326,29 @@ function setRefreshTimer() {
 }
 
 refreshIntervalInput.addEventListener("input", setRefreshTimer);
+refreshIntervalInput.addEventListener("change", async () => {
+  const seconds = Number(refreshIntervalInput.value);
+  if (Number.isNaN(seconds)) {
+    return;
+  }
+  try {
+    const response = await fetch("/api/refresh-interval", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seconds }),
+    });
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    if (typeof payload.seconds === "number") {
+      refreshIntervalInput.value = String(payload.seconds);
+      setRefreshTimer();
+    }
+  } catch (error) {
+    console.warn("Unable to update backend refresh interval.", error);
+  }
+});
 warningThresholdInput.addEventListener("input", updateWarningStyles);
 warningVolumeInput.addEventListener("change", playWarningSound);
 
@@ -340,3 +356,21 @@ initSorting();
 fetchData({ allowMockFallback: true, tryLiveWhenMocked: true });
 setRefreshTimer();
 updateWarningStyles();
+
+async function syncBackendRefreshInterval() {
+  try {
+    const response = await fetch("/api/refresh-interval");
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    if (typeof payload.seconds === "number") {
+      refreshIntervalInput.value = String(payload.seconds);
+      setRefreshTimer();
+    }
+  } catch (error) {
+    console.warn("Unable to load backend refresh interval.", error);
+  }
+}
+
+syncBackendRefreshInterval();

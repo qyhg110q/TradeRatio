@@ -30,6 +30,17 @@ function formatRatio(value) {
   return `${(value * 100).toFixed(2)}%`;
 }
 
+function formatPrice(value) {
+  if (value === null || value === undefined) {
+    return "N/A";
+  }
+  const numberValue = Number(value);
+  if (Number.isNaN(numberValue)) {
+    return "N/A";
+  }
+  return numberValue.toLocaleString(undefined, { maximumFractionDigits: 8 });
+}
+
 function getWarningThreshold() {
   const threshold = Number(warningThresholdInput.value);
   if (Number.isNaN(threshold) || threshold < 0) {
@@ -114,40 +125,42 @@ function renderTable(rows) {
     tr.dataset.short = row.shortProfitRatio ?? "";
     tr.innerHTML = `
       <td>${row.symbol}</td>
+      <td>${formatPrice(row.price)}</td>
       <td>${formatRatio(row.longProfitRatio)}</td>
       <td>${formatRatio(row.shortProfitRatio)}</td>
       <td><button class="row-refresh" type="button" data-symbol="${row.symbol}">刷新</button></td>
     `;
     const cells = tr.querySelectorAll("td");
-    applyWarningState(tr, cells[1], row.longProfitRatio, "long");
-    applyWarningState(tr, cells[2], row.shortProfitRatio, "short");
+    applyWarningState(tr, cells[2], row.longProfitRatio, "long");
+    applyWarningState(tr, cells[3], row.shortProfitRatio, "short");
     tableBody.appendChild(tr);
   });
 }
 
 function updateRow(tr, payload) {
   const cells = tr.querySelectorAll("td");
-  if (cells.length < 3) {
+  if (cells.length < 4) {
     return;
   }
   tr.dataset.long = payload.longProfitRatio ?? "";
   tr.dataset.short = payload.shortProfitRatio ?? "";
-  cells[1].textContent = formatRatio(payload.longProfitRatio);
-  cells[2].textContent = formatRatio(payload.shortProfitRatio);
-  applyWarningState(tr, cells[1], payload.longProfitRatio, "long");
-  applyWarningState(tr, cells[2], payload.shortProfitRatio, "short");
+  cells[1].textContent = formatPrice(payload.price);
+  cells[2].textContent = formatRatio(payload.longProfitRatio);
+  cells[3].textContent = formatRatio(payload.shortProfitRatio);
+  applyWarningState(tr, cells[2], payload.longProfitRatio, "long");
+  applyWarningState(tr, cells[3], payload.shortProfitRatio, "short");
 }
 
 function updateWarningStyles() {
   tableBody.querySelectorAll("tr").forEach((row) => {
     const cells = row.querySelectorAll("td");
-    if (cells.length < 3) {
+    if (cells.length < 4) {
       return;
     }
     const longValue = row.dataset.long === "" ? null : Number(row.dataset.long);
     const shortValue = row.dataset.short === "" ? null : Number(row.dataset.short);
-    applyWarningState(row, cells[1], Number.isNaN(longValue) ? null : longValue, "long");
-    applyWarningState(row, cells[2], Number.isNaN(shortValue) ? null : shortValue, "short");
+    applyWarningState(row, cells[2], Number.isNaN(longValue) ? null : longValue, "long");
+    applyWarningState(row, cells[3], Number.isNaN(shortValue) ? null : shortValue, "short");
   });
 }
 

@@ -15,6 +15,7 @@ BINANCE_EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo"
 BINANCE_SMART_MONEY_URL = (
     "https://www.binance.com/bapi/futures/v1/public/future/smart-money/signal/overview"
 )
+BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/ticker/price"
 
 DEFAULT_PER_PAGE = 50
 MAX_PER_PAGE = 200
@@ -33,6 +34,7 @@ class ProfitRatio:
     symbol: str
     long_profit_ratio: float | None
     short_profit_ratio: float | None
+    price: float | None
 
 
 def safe_ratio(numerator: float | int, denominator: float | int) -> float | None:
@@ -41,7 +43,9 @@ def safe_ratio(numerator: float | int, denominator: float | int) -> float | None
     return float(numerator) / float(denominator)
 
 
-def parse_profit_ratio(symbol: str, payload: dict[str, Any]) -> ProfitRatio:
+def parse_profit_ratio(
+    symbol: str, payload: dict[str, Any], price: float | None = None
+) -> ProfitRatio:
     data = payload.get("data") or {}
     long_profit = safe_ratio(
         data.get("longProfitTraders", 0),
@@ -51,7 +55,12 @@ def parse_profit_ratio(symbol: str, payload: dict[str, Any]) -> ProfitRatio:
         data.get("shortProfitTraders", 0),
         data.get("shortTraders", 0),
     )
-    return ProfitRatio(symbol=symbol, long_profit_ratio=long_profit, short_profit_ratio=short_profit)
+    return ProfitRatio(
+        symbol=symbol,
+        long_profit_ratio=long_profit,
+        short_profit_ratio=short_profit,
+        price=price,
+    )
 
 
 def fetch_active_symbols(session: "requests.Session") -> list[str]:
@@ -85,13 +94,31 @@ def fetch_profit_ratios(session: "requests.Session", symbols: Iterable[str]) -> 
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError):
-            return ProfitRatio(symbol=symbol, long_profit_ratio=None, short_profit_ratio=None)
+            return ProfitRatio(
+                symbol=symbol, long_profit_ratio=None, short_profit_ratio=None, price=None
+            )
         return parse_profit_ratio(symbol, payload)
 
     from concurrent.futures import ThreadPoolExecutor
 
     with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as executor:
         return list(executor.map(fetch_symbol, symbols))
+
+
+def fetch_prices(session: "requests.Session") -> dict[str, float]:
+    response = session.get(BINANCE_PRICE_URL, timeout=REQUEST_TIMEOUT)
+    response.raise_for_status()
+    data = response.json()
+    prices: dict[str, float] = {}
+    for item in data:
+        symbol = item.get("symbol")
+        price_str = item.get("price")
+        if symbol and price_str is not None:
+            try:
+                prices[symbol] = float(price_str)
+            except (TypeError, ValueError):
+                continue
+    return prices
 
 
 def get_cached_ratios() -> list[ProfitRatio]:
@@ -166,6 +193,7 @@ def serialize_ratios(ratios: Iterable[ProfitRatio]) -> list[dict[str, Any]]:
             "symbol": ratio.symbol,
             "longProfitRatio": ratio.long_profit_ratio,
             "shortProfitRatio": ratio.short_profit_ratio,
+            "price": ratio.price,
         }
         for ratio in ratios
     ]
@@ -176,6 +204,7 @@ def serialize_ratio(ratio: ProfitRatio, stale: bool = False) -> dict[str, Any]:
         "symbol": ratio.symbol,
         "longProfitRatio": ratio.long_profit_ratio,
         "shortProfitRatio": ratio.short_profit_ratio,
+        "price": ratio.price,
         "stale": stale,
     }
 
@@ -221,6 +250,19 @@ def create_app() -> "Flask":
                     )
 
                 ratios = fetch_profit_ratios(session, symbols)
+                try:
+                    prices = fetch_prices(session)
+                except (requests.RequestException, ValueError):
+                    prices = {}
+                ratios = [
+                    ProfitRatio(
+                        symbol=ratio.symbol,
+                        long_profit_ratio=ratio.long_profit_ratio,
+                        short_profit_ratio=ratio.short_profit_ratio,
+                        price=prices.get(ratio.symbol),
+                    )
+                    for ratio in ratios
+                ]
             set_cached_ratios(ratios)
 
         ratios = sort_profit_ratios(ratios, sort_key, order)
@@ -267,7 +309,19 @@ def create_app() -> "Flask":
                     502,
                 )
 
-        ratio = parse_profit_ratio(symbol, payload)
+            try:
+                price_response = session.get(
+                    BINANCE_PRICE_URL,
+                    params={"symbol": symbol},
+                    timeout=REQUEST_TIMEOUT,
+                )
+                price_response.raise_for_status()
+                price_payload = price_response.json()
+                price_value = float(price_payload.get("price"))
+            except (requests.RequestException, ValueError, TypeError):
+                price_value = None
+
+        ratio = parse_profit_ratio(symbol, payload, price_value)
         set_cached_symbol(symbol, ratio)
         return jsonify(serialize_ratio(ratio))
 

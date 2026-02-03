@@ -19,7 +19,7 @@
       <section class="controls">
         <div class="controls-group">
           <div>
-            <label for="perPage">Rows per page</label>
+            <label for="perPage">每页行数</label>
             <select id="perPage">
               <option value="25">25</option>
               <option value="50" selected>50</option>
@@ -27,11 +27,45 @@
               <option value="200">200</option>
             </select>
           </div>
-          <div>
-            <label for="refreshInterval">Refresh interval (seconds)</label>
-            <input id="refreshInterval" type="number" min="0" value="0" />
+        </div>
+        <div class="refresh-panel">
+          <div class="refresh-header">
+            <h2>刷新与自动刷新</h2>
+            <p>在此处手动刷新数据或设置自动刷新间隔。</p>
           </div>
-          <button id="refreshBtn" class="primary" type="button">Refresh now</button>
+          <div class="refresh-controls">
+            <div>
+              <label for="refreshInterval">自动刷新时间（秒）</label>
+              <input id="refreshInterval" type="number" min="0" value="30" />
+            </div>
+            <div>
+              <label for="warningThreshold">警告值（%）</label>
+              <input id="warningThreshold" type="number" min="0" step="0.1" value="1.5" />
+            </div>
+            <div class="warning-sound">
+              <label>
+                <input id="longWarningSound" type="checkbox" />
+                Long 低于警告值时提示音
+              </label>
+              <label>
+                <input id="shortWarningSound" type="checkbox" />
+                Short 低于警告值时提示音
+              </label>
+              <div class="sound-volume">
+                <label for="warningVolume">提示音音量</label>
+                <input
+                  id="warningVolume"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value="0.08"
+                />
+              </div>
+            </div>
+            <button id="refreshBtn" class="primary" type="button">立即刷新</button>
+            <div class="auto-refresh" id="autoRefreshStatus">自动刷新：未启用</div>
+          </div>
         </div>
         <div class="status" id="status">Loading data…</div>
       </section>
@@ -41,8 +75,10 @@
           <thead>
             <tr>
               <th data-sort="symbol">Symbol</th>
+              <th>Price</th>
               <th data-sort="long">Long Profit Ratio</th>
               <th data-sort="short">Short Profit Ratio</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody id="tableBody"></tbody>

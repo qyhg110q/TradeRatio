@@ -209,11 +209,7 @@ async function refreshSymbolRow(button) {
   }
 }
 
-async function fetchData({
-  forceRefresh = false,
-  allowMockFallback = false,
-  tryLiveWhenMocked = false,
-} = {}) {
+async function fetchData({ allowMockFallback = false, tryLiveWhenMocked = false } = {}) {
   const perPage = Number(perPageSelect.value);
   const shouldTryLive = !useMockData || (useMockData && tryLiveWhenMocked);
   const endpoint = shouldTryLive ? "/api/profit-ratios" : "/static/mock-data.json";
@@ -224,9 +220,6 @@ async function fetchData({
     url.searchParams.set("per_page", perPage);
     url.searchParams.set("sort", sortKey);
     url.searchParams.set("order", sortOrder);
-    if (forceRefresh) {
-      url.searchParams.set("refresh", "1");
-    }
   }
 
   setStatus("Loading data…");
@@ -313,7 +306,7 @@ perPageSelect.addEventListener("change", () => {
 });
 
 refreshBtn.addEventListener("click", () => {
-  fetchData({ forceRefresh: true, tryLiveWhenMocked: true });
+  fetchData({ tryLiveWhenMocked: true });
 });
 
 function setRefreshTimer() {
@@ -324,7 +317,7 @@ function setRefreshTimer() {
   const seconds = Number(refreshIntervalInput.value);
   if (!Number.isNaN(seconds) && seconds > 0) {
     refreshTimer = setInterval(() => {
-      fetchData({ forceRefresh: true, tryLiveWhenMocked: true });
+      fetchData({ tryLiveWhenMocked: true });
     }, seconds * 1000);
     autoRefreshStatus.textContent = `自动刷新：每 ${seconds} 秒`;
   } else {

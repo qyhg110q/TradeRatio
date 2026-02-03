@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import math
 import os
+import sqlite3
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Iterable, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -23,6 +25,7 @@ REQUEST_TIMEOUT = 6
 FETCH_WORKERS = 24
 CACHE_TTL_SECONDS = 60
 SYMBOL_CACHE_TTL_SECONDS = 15
+HISTORY_DB_PATH = os.environ.get("HISTORY_DB_PATH", "data/history.db")
 
 _cache_lock = threading.Lock()
 _cache_state: dict[str, Any] = {"timestamp": 0.0, "data": []}
@@ -121,6 +124,70 @@ def fetch_prices(session: "requests.Session") -> dict[str, float]:
     return prices
 
 
+def init_history_db() -> None:
+    os.makedirs(os.path.dirname(HISTORY_DB_PATH), exist_ok=True)
+    with sqlite3.connect(HISTORY_DB_PATH) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS history (
+                symbol TEXT NOT NULL,
+                ts INTEGER NOT NULL,
+                price REAL,
+                long_ratio REAL,
+                short_ratio REAL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_history_symbol_ts ON history(symbol, ts)")
+
+
+def record_ratios(ratios: Iterable[ProfitRatio], timestamp: int) -> None:
+    rows = [
+        (
+            ratio.symbol,
+            timestamp,
+            ratio.price,
+            ratio.long_profit_ratio,
+            ratio.short_profit_ratio,
+        )
+        for ratio in ratios
+    ]
+    if not rows:
+        return
+    with sqlite3.connect(HISTORY_DB_PATH) as conn:
+        conn.executemany(
+            """
+            INSERT INTO history (symbol, ts, price, long_ratio, short_ratio)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+
+
+def get_symbol_history(symbol: str, limit: int = 500) -> list[dict[str, Any]]:
+    with sqlite3.connect(HISTORY_DB_PATH) as conn:
+        cursor = conn.execute(
+            """
+            SELECT ts, price, long_ratio, short_ratio
+            FROM history
+            WHERE symbol = ?
+            ORDER BY ts ASC
+            LIMIT ?
+            """,
+            (symbol, limit),
+        )
+        rows = cursor.fetchall()
+    return [
+        {
+            "timestamp": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+            "price": price,
+            "longProfitRatio": long_ratio,
+            "shortProfitRatio": short_ratio,
+        }
+        for ts, price, long_ratio, short_ratio in rows
+    ]
+
+
 def get_cached_ratios() -> list[ProfitRatio]:
     with _cache_lock:
         return list(_cache_state["data"])
@@ -214,10 +281,15 @@ def create_app() -> "Flask":
     from flask import Flask, jsonify, render_template, request
 
     app = Flask(__name__, static_folder="static", template_folder="templates")
+    init_history_db()
 
     @app.route("/")
     def index() -> str:
         return render_template("index.html")
+
+    @app.route("/history")
+    def history_view() -> str:
+        return render_template("history.html")
 
     @app.route("/api/profit-ratios")
     def profit_ratios() -> Any:
@@ -264,6 +336,7 @@ def create_app() -> "Flask":
                     for ratio in ratios
                 ]
             set_cached_ratios(ratios)
+            record_ratios(ratios, int(time.time()))
 
         ratios = sort_profit_ratios(ratios, sort_key, order)
         page_items, total = paginate(ratios, page, per_page)
@@ -323,7 +396,20 @@ def create_app() -> "Flask":
 
         ratio = parse_profit_ratio(symbol, payload, price_value)
         set_cached_symbol(symbol, ratio)
+        record_ratios([ratio], int(time.time()))
         return jsonify(serialize_ratio(ratio))
+
+    @app.route("/api/history")
+    def history() -> Any:
+        symbol = request.args.get("symbol", "").strip().upper()
+        if not symbol:
+            return jsonify({"error": "Symbol is required."}), 400
+        try:
+            limit = int(request.args.get("limit", 500))
+        except ValueError:
+            limit = 500
+        limit = max(1, min(limit, 2000))
+        return jsonify({"symbol": symbol, "data": get_symbol_history(symbol, limit)})
 
     return app
 

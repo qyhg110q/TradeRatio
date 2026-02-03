@@ -124,7 +124,7 @@ function renderTable(rows) {
     tr.dataset.long = row.longProfitRatio ?? "";
     tr.dataset.short = row.shortProfitRatio ?? "";
     tr.innerHTML = `
-      <td>${row.symbol}</td>
+      <td><a href="/history?symbol=${row.symbol}">${row.symbol}</a></td>
       <td>${formatPrice(row.price)}</td>
       <td>${formatRatio(row.longProfitRatio)}</td>
       <td>${formatRatio(row.shortProfitRatio)}</td>
